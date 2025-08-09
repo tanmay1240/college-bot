@@ -1,0 +1,70 @@
+import fitz 
+import json
+from tqdm import tqdm
+import os
+
+# === CONFIGURATION ===
+pdf_files = [
+    r"D:\\college_chatbot\data\\raw_pdfs\\1752853618SCAN_20250710_170026887.pdf",
+    r"D:\\college_chatbot\data\\raw_pdfs\\1752853692SCAN_20250708_114455539.pdf",
+    r"D:\\college_chatbot\data\\raw_pdfs\\1753465340TIME TABLE.pdf",
+    r"D:\\college_chatbot\data\\raw_pdfs\\1753465462300625-academic-calendar-2025-26.pdf",
+    r"D:\\college_chatbot\data\\raw_pdfs\\CSE Syllabus 18-07-2025.pdf"
+]
+output_file = r"D:\\college_chatbot\data\\raw_pdfs\\college_dataset.json"
+chunk_size = 300  # number of words per chunk
+
+# === HELPER FUNCTIONS ===
+
+def extract_text_chunks_from_pdf(pdf_path):
+    doc = fitz.open(pdf_path)
+    chunks = []
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text = page.get_text().strip()
+        if text:
+            chunks.extend(
+                split_text_into_chunks(text, chunk_size, page_num + 1)
+            )
+    return chunks
+
+def split_text_into_chunks(text, size, page_number):
+    words = text.split()
+    chunks = []
+
+    for i in range(0, len(words), size):
+        chunk_text = " ".join(words[i:i + size])
+        chunks.append({
+            "chunk_id": None,  # to be filled later
+            "text": chunk_text,
+            "source": None,  # to be filled later
+            "page": page_number
+        })
+
+    return chunks
+
+# === MAIN SCRIPT ===
+
+def build_dataset():
+    dataset = []
+    chunk_id = 1
+
+    for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
+        source_name = os.path.basename(pdf_path)
+        chunks = extract_text_chunks_from_pdf(pdf_path)
+
+        for chunk in chunks:
+            chunk["chunk_id"] = f"{chunk_id:04d}"
+            chunk["source"] = source_name
+            dataset.append(chunk)
+            chunk_id += 1
+
+    with open(output_file, mode="w", encoding="utf-8") as file:
+        json.dump(dataset, file, indent=2, ensure_ascii=False)
+
+    print(f"\n✅ JSON dataset saved to: {output_file}")
+
+# === RUN ===
+if __name__ == "__main__":
+    build_dataset()
