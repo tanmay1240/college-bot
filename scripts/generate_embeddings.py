@@ -1,70 +1,64 @@
-import fitz 
-import json
-from tqdm import tqdm
 import os
+import json
+from pathlib import Path
+from typing import List, Dict, Any
+
+from tqdm import tqdm
+from sentence_transformers import SentenceTransformer
 
 # === CONFIGURATION ===
-pdf_files = [
-    r"D:\\college_chatbot\data\\raw_pdfs\\1752853618SCAN_20250710_170026887.pdf",
-    r"D:\\college_chatbot\data\\raw_pdfs\\1752853692SCAN_20250708_114455539.pdf",
-    r"D:\\college_chatbot\data\\raw_pdfs\\1753465340TIME TABLE.pdf",
-    r"D:\\college_chatbot\data\\raw_pdfs\\1753465462300625-academic-calendar-2025-26.pdf",
-    r"D:\\college_chatbot\data\\raw_pdfs\\CSE Syllabus 18-07-2025.pdf"
-]
-output_file = r"D:\\college_chatbot\data\\raw_pdfs\\college_dataset.json"
-chunk_size = 300  # number of words per chunk
+WORKSPACE_ROOT = Path("/workspace")
+INPUT_DATASET_JSON = WORKSPACE_ROOT / "data/raw_pdfs/college_dataset.json"
+OUTPUT_DIR = WORKSPACE_ROOT / "data/embeddings"
+OUTPUT_DATASET_JSON = OUTPUT_DIR / "college_dataset_with_embeddings.json"
 
-# === HELPER FUNCTIONS ===
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+BATCH_SIZE = 64
+NORMALIZE_EMBEDDINGS = True
 
-def extract_text_chunks_from_pdf(pdf_path):
-    doc = fitz.open(pdf_path)
-    chunks = []
 
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        text = page.get_text().strip()
-        if text:
-            chunks.extend(
-                split_text_into_chunks(text, chunk_size, page_num + 1)
-            )
-    return chunks
+def load_dataset(input_path: Path) -> List[Dict[str, Any]]:
+    if not input_path.exists():
+        raise FileNotFoundError(f"Dataset not found at {input_path}")
+    with input_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
 
-def split_text_into_chunks(text, size, page_number):
-    words = text.split()
-    chunks = []
 
-    for i in range(0, len(words), size):
-        chunk_text = " ".join(words[i:i + size])
-        chunks.append({
-            "chunk_id": None,  # to be filled later
-            "text": chunk_text,
-            "source": None,  # to be filled later
-            "page": page_number
-        })
+def save_dataset(records: List[Dict[str, Any]], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
 
-    return chunks
 
-# === MAIN SCRIPT ===
+def generate_embeddings_for_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    texts: List[str] = [record.get("text", "") for record in records]
 
-def build_dataset():
-    dataset = []
-    chunk_id = 1
+    model = SentenceTransformer(MODEL_NAME)
+    embeddings = model.encode(
+        texts,
+        batch_size=BATCH_SIZE,
+        show_progress_bar=True,
+        normalize_embeddings=NORMALIZE_EMBEDDINGS,
+        convert_to_numpy=True,
+    )
 
-    for pdf_path in tqdm(pdf_files, desc="Processing PDFs"):
-        source_name = os.path.basename(pdf_path)
-        chunks = extract_text_chunks_from_pdf(pdf_path)
+    for record, vector in zip(records, embeddings):
+        record["embedding"] = vector.tolist()
 
-        for chunk in chunks:
-            chunk["chunk_id"] = f"{chunk_id:04d}"
-            chunk["source"] = source_name
-            dataset.append(chunk)
-            chunk_id += 1
+    return records
 
-    with open(output_file, mode="w", encoding="utf-8") as file:
-        json.dump(dataset, file, indent=2, ensure_ascii=False)
 
-    print(f"\n✅ JSON dataset saved to: {output_file}")
+def main() -> None:
+    print(f"Loading dataset from: {INPUT_DATASET_JSON}")
+    records = load_dataset(INPUT_DATASET_JSON)
 
-# === RUN ===
+    print(f"Generating embeddings with model: {MODEL_NAME}")
+    records_with_embeddings = generate_embeddings_for_records(records)
+
+    print(f"Saving dataset with embeddings to: {OUTPUT_DATASET_JSON}")
+    save_dataset(records_with_embeddings, OUTPUT_DATASET_JSON)
+    print("✅ Embeddings generated and dataset saved.")
+
+
 if __name__ == "__main__":
-    build_dataset()
+    main()
