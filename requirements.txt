@@ -1,0 +1,12 @@
+# Core processing
+PyMuPDF>=1.24.8
+tqdm>=4.66.4
+
+# Embeddings
+sentence-transformers>=2.6.1
+
+# Weaviate client (v3 API to match current usage)
+weaviate-client>=3.25.3,<4
+
+# Env management
+python-dotenv>=1.0.1
